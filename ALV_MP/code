@@ -1,1 +1,640 @@
+*&---------------------------------------------------------------------*
+*& Report  ZALV_MP  
+*&
+*&---------------------------------------------------------------------*
+*& This is a executable program where a dynamic alv report in generated.
+*& 
+*&---------------------------------------------------------------------*
 
+REPORT  zalv_mp.
+
+TYPES: BEGIN OF ty_qals,
+          charg TYPE qals-charg,
+        END OF ty_qals,
+
+        BEGIN OF ty_qamr,
+          vorglfnr TYPE qamr-vorglfnr,
+          merknr TYPE qamr-merknr,
+          mittelwert TYPE qamr-mittelwert,
+        END OF ty_qamr,
+
+        BEGIN OF ty_qamv,
+          verwmerkm TYPE qamv-verwmerkm,
+          pmethode TYPE qamv-pmethode, "method
+          kurztext TYPE qamv-kurztext, "test parameter
+          toleranzun TYPE qamv-toleranzun,
+          toleranzob TYPE qamv-toleranzob,
+          sollwert TYPE qamv-sollwert,
+        END OF ty_qamv,
+
+         BEGIN OF ty_qamv2,
+            toleranzun TYPE qamv-toleranzun,
+            toleranzob TYPE qamv-toleranzob,
+           END OF ty_qamv2,
+
+         BEGIN OF ty_qamr2,
+               gruppe1 TYPE qamr-gruppe1,
+               katalgart1 TYPE qamr-katalgart1,
+               code1 TYPE qamr-code1,
+         END OF ty_qamr2,
+
+         BEGIN OF ty_res,
+          kurztext TYPE qpct-kurztext,
+         END OF ty_res,
+
+         BEGIN OF ty_final,
+           test_parameter TYPE qamv-kurztext,
+           method TYPE qmtt-kurztext,
+           unit TYPE zcoa_mp-unit,
+           specification(50) TYPE c,
+           kurztext TYPE qpct-kurztext,
+         END OF ty_final.
+
+DATA: lv_batch TYPE qals-charg,
+      lv_insp_lot TYPE qals-prueflos,
+      lv_order TYPE qals-aufnr,
+      lv_fin_date TYPE afpo-ltrmi,
+      lv_material TYPE qals-matnr,
+      lv_mat_desc TYPE makt-maktx.
+
+DATA: it_qals TYPE STANDARD TABLE OF ty_qals,
+      wa_qals TYPE ty_qals,
+
+      it_qamr TYPE STANDARD TABLE OF ty_qamr,
+      wa_qamr TYPE ty_qamr,
+
+      it_qamr2 TYPE STANDARD TABLE OF ty_qamr2,
+      wa_qamr2 TYPE ty_qamr2,
+
+      it_qamv TYPE TABLE OF ty_qamv,
+      wa_qamv TYPE ty_qamv,
+
+      it_qamv2 TYPE TABLE OF ty_qamv2,
+      wa_qamv2 TYPE ty_qamv2,
+
+      it_qmtt TYPE TABLE OF qmtt-kurztext,
+      wa_qmtt TYPE qmtt-kurztext,
+
+      it_mic TYPE TABLE OF zcoa_mp,
+      wa_mic TYPE zcoa_mp,
+
+      it_unit TYPE TABLE OF zcoa_mp,
+      wa_unit TYPE zcoa_mp,
+
+      it_spe TYPE TABLE OF qamv-sollwert,
+      wa_spe TYPE qamv-sollwert,
+
+      it_spe2 TYPE TABLE OF cha_class_view-sollwert,
+      wa_spe2 TYPE cha_class_view-sollwert,
+      wa_spe3 TYPE cha_class_view-sollwert,
+
+      it_res TYPE TABLE OF ty_res,
+      val(50) TYPE c,
+      wa_res TYPE ty_res.
+
+
+DATA: inspection_lot TYPE qals-prueflos.
+
+
+"for final table..............
+DATA: it_proj TYPE TABLE OF ty_final,
+      wa_proj TYPE ty_final.
+
+
+" Used for assignement data in prcess_data module.....
+DATA:  date_of_production TYPE afpo-ltrmi,
+       product TYPE makt-maktx,
+       batch_number TYPE qals-charg.
+
+DATA: ok_code_sel TYPE sy-ucomm,
+      ok_code_pro TYPE sy-ucomm.
+
+DATA: wa_layout    TYPE lvc_s_layo,
+      wa_fcat_proj TYPE lvc_s_fcat,
+      it_fcat_proj TYPE STANDARD TABLE OF lvc_s_fcat.
+
+DATA: obj_cust_proj TYPE REF TO cl_gui_custom_container,
+      obj_grid_proj TYPE REF TO cl_gui_alv_grid.
+
+PARAMETERS: p_batch TYPE qals-charg OBLIGATORY,
+            p_inc_lo TYPE qals-prueflos OBLIGATORY,
+            p_pro_od TYPE qals-aufnr, "process order
+            p_inc_ty TYPE qals-art, "inspection type
+            p_mat TYPE qals-matnr. "material
+
+
+
+CALL SCREEN 9002.
+
+*----------------------------------------------------------------------*
+*  MODULE STATUS_9002 OUTPUT
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+MODULE status_9002 OUTPUT.
+  SET PF-STATUS 'GUI_9002'.
+  SET TITLEBAR 'TITLE_9002'.
+
+  PERFORM display_project_wbs.
+  PERFORM create_object.
+  PERFORM grid_method.
+
+
+ENDMODULE.                    "STATUS_9002 OUTPUT
+
+
+
+
+*----------------------------------------------------------------------*
+*  MODULE USER_COMMAND_9002 INPUT
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+MODULE user_command_9002 INPUT.
+
+  PERFORM display_project_wbs.
+
+  CASE sy-ucomm.
+    WHEN 'BACK'.
+      PERFORM leave_alv.
+    WHEN 'EXIT'.
+      PERFORM leave_alv.
+    WHEN 'CANCEL'.
+      PERFORM leave_alv.
+  ENDCASE.
+
+ENDMODULE.                    "USER_COMMAND_9002 INPUT
+
+
+
+*----------------------------------------------------------------------*
+***INCLUDE ZCOA_ALVMP_SUBROUTINE .
+*----------------------------------------------------------------------*
+
+FORM display_project_wbs .
+
+  MESSAGE 'STARTING SCREEN 9002' TYPE 'S'.
+  PERFORM get_data.
+  PERFORM process_static_data_assignment.
+
+
+
+ENDFORM.                    " DISPLAY_PROJECT_WBS
+
+
+*&---------------------------------------------------------------------*
+*&      Form  clear_screen
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM clear_screen .
+
+  CLEAR :  p_batch , "batch_number
+           p_inc_lo , "coa inspection lot
+           p_pro_od , "process order
+           p_inc_ty , "inspection type
+           p_mat . "material
+
+ENDFORM.                    " CLEAR_SCREEN
+*&---------------------------------------------------------------------*
+*&      Form  LEAVE_ALV
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM leave_alv .
+
+
+  CALL METHOD: obj_grid_proj->refresh_table_display, "FREE - another method
+               obj_cust_proj->free.
+  CLEAR:   p_batch , "batch_number
+           p_inc_lo , "coa inspection lot
+           p_pro_od , "process order
+           p_inc_ty , "inspection type
+           p_mat . "material
+  REFRESH: it_proj[],
+           it_fcat_proj.
+  CLEAR: ok_code_sel, ok_code_pro.
+  CLEAR: it_proj.
+  CLEAR: it_fcat_proj.
+
+  ""LEAVE TO SCREEN 0.
+
+  SET SCREEN 0.
+  LEAVE SCREEN.
+
+
+ENDFORM.                    " LEAVE_ALV
+
+*&---------------------------------------------------------------------*
+*&      Form  create_object
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM create_object .
+
+  CLEAR: obj_cust_proj,
+         obj_grid_proj.
+
+  IF obj_cust_proj IS NOT BOUND. ""BOUND.
+    "Creating the Container object
+    CREATE OBJECT obj_cust_proj
+      EXPORTING
+        container_name              = 'CONT_PROJ'
+      EXCEPTIONS
+        cntl_error                  = 1
+        cntl_system_error           = 2
+        create_error                = 3
+        lifetime_error              = 4
+        lifetime_dynpro_dynpro_link = 5
+        OTHERS                      = 6.
+
+    CREATE OBJECT obj_grid_proj
+      EXPORTING
+        i_parent = obj_cust_proj.
+  ENDIF.
+
+
+ENDFORM.                    " CREATE_OBJECT
+
+
+*&---------------------------------------------------------------------*
+*&      Form  grid_method
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM grid_method .
+
+  PERFORM fcat_proj.  "Field Catalog for PROJ
+  PERFORM alv_layout. "ALV Layout
+
+
+  CALL METHOD obj_grid_proj->set_table_for_first_display
+    EXPORTING
+*     i_buffer_active               =
+*     i_bypassing_buffer            =
+*     i_consistency_check           =
+*     i_structure_name              =
+*     is_variant                    =
+*     i_save                        =
+*     i_default                     = 'x'
+      is_layout                     = wa_layout
+*     is_print                      =
+*     it_special_groups             =
+*     it_toolbar_excluding          =
+*     it_hyperlink                  =
+*     it_alv_graphics               =
+*     it_except_qinfo               =
+*     ir_salv_adapter               =
+    CHANGING
+      it_outtab                     = it_proj
+      it_fieldcatalog               = it_fcat_proj
+*     it_sort                       =
+*     it_filter                     =
+    EXCEPTIONS
+      invalid_parameter_combination = 1
+      program_error                 = 2
+      too_many_lines                = 3
+      OTHERS                        = 4.
+
+
+ENDFORM.                    " GRID_METHOD
+
+*&---------------------------------------------------------------------*
+*&      Form  fcat_proj
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM fcat_proj .
+
+  CLEAR wa_fcat_proj.
+  REFRESH it_fcat_proj.
+
+  DATA lv_col TYPE i.
+
+  lv_col                 = 1 + lv_col.
+  wa_fcat_proj-col_pos   = lv_col.
+  wa_fcat_proj-fieldname = 'TEST_PARAMETER'.
+  wa_fcat_proj-tabname   = 'IT_PROJ'.
+  wa_fcat_proj-reptext   = 'Test Parameter'.
+  wa_fcat_proj-outputlen = 27.
+  APPEND wa_fcat_proj TO it_fcat_proj.
+  CLEAR wa_fcat_proj.
+
+  lv_col                 = 1 + lv_col.
+  wa_fcat_proj-col_pos   = lv_col.
+  wa_fcat_proj-fieldname = 'METHOD'.
+  wa_fcat_proj-tabname   = 'IT_PROJ'.
+  wa_fcat_proj-reptext   = 'Method'.
+  wa_fcat_proj-outputlen = 33.
+  APPEND wa_fcat_proj TO it_fcat_proj.
+  CLEAR wa_fcat_proj.
+
+  lv_col                 = 1 + lv_col.
+  wa_fcat_proj-col_pos   = lv_col.
+  wa_fcat_proj-fieldname = 'UNIT'.
+  wa_fcat_proj-tabname   = 'IT_PROJ'.
+  wa_fcat_proj-reptext   = 'Unit'.
+  wa_fcat_proj-outputlen = 15.
+  APPEND wa_fcat_proj TO it_fcat_proj.
+  CLEAR wa_fcat_proj.
+
+  lv_col                 = 1 + lv_col.
+  wa_fcat_proj-col_pos   = lv_col.
+  wa_fcat_proj-fieldname = 'SPECIFICATION'.
+  wa_fcat_proj-tabname   = 'IT_PROJ'.
+  wa_fcat_proj-reptext   = 'Specification'.
+  wa_fcat_proj-outputlen = 25.
+  APPEND wa_fcat_proj TO it_fcat_proj.
+  CLEAR wa_fcat_proj.
+
+  lv_col                 = 1 + lv_col.
+  wa_fcat_proj-col_pos   = lv_col.
+  wa_fcat_proj-fieldname = 'KURZTEXT'.
+  wa_fcat_proj-tabname   = 'IT_PROJ'.
+  wa_fcat_proj-reptext   = 'Result'.
+  wa_fcat_proj-outputlen = 13.
+  APPEND wa_fcat_proj TO it_fcat_proj.
+  CLEAR wa_fcat_proj.
+
+
+ENDFORM.                    " FCAT_PROJ
+
+
+*&---------------------------------------------------------------------*
+*&      Form  alv_layout
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM alv_layout .
+
+  wa_layout-zebra      = 'X'.
+  wa_layout-sel_mode   = 'X'.
+
+
+ENDFORM.                    "alv_layout
+
+*&---------------------------------------------------------------------*
+*&      Form  get_data
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM get_data .
+
+  MESSAGE 'inside get data' TYPE 'S'.
+  PERFORM get_static_data.
+  PERFORM get_data_2.
+
+ENDFORM.                    " GET_DATA
+
+*&---------------------------------------------------------------------*
+*&      Form  get_static_data
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM get_static_data .
+
+
+  SELECT MAX( prueflos ) INTO lv_insp_lot FROM qals WHERE charg EQ p_batch.
+
+  SELECT SINGLE aufnr INTO lv_order FROM qals WHERE charg EQ p_batch AND prueflos = lv_insp_lot.
+
+  SELECT SINGLE ltrmi INTO lv_fin_date FROM afpo
+    WHERE aufnr EQ lv_order.
+
+
+  IF lv_fin_date IS INITIAL.
+
+    SELECT SINGLE prueflos INTO lv_insp_lot FROM qals
+      WHERE charg EQ p_batch.
+
+    SELECT SINGLE aufnr INTO lv_order FROM qals WHERE charg EQ lv_batch AND prueflos = lv_insp_lot.
+
+    SELECT SINGLE ltrmi INTO lv_fin_date FROM afpo
+      WHERE aufnr EQ lv_order.
+
+  ENDIF.
+
+
+
+  SELECT SINGLE matnr INTO lv_material
+    FROM qals
+    WHERE prueflos EQ p_inc_lo.
+
+  SELECT SINGLE maktx INTO lv_mat_desc
+    FROM makt
+    WHERE matnr = lv_material.
+
+ENDFORM.                    " GET_STATIC_DATA
+
+
+*&---------------------------------------------------------------------*
+*&      Form  process_static_data_assignment
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM process_static_data_assignment.
+
+  date_of_production =  lv_fin_date.
+  product =  lv_mat_desc.
+  SHIFT p_batch LEFT DELETING LEADING '0'.
+  batch_number = p_batch.
+
+ENDFORM.                    "process_data1
+
+
+
+*&---------------------------------------------------------------------*
+*&      Form  get_data_2
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM get_data_2 .
+
+  CLEAR: it_proj, it_qamr2,it_qamr,it_qamv,it_mic,it_qals,it_qmtt.
+
+
+  SELECT SINGLE
+          prueflos
+  INTO inspection_lot
+  FROM qals
+  WHERE charg EQ p_batch
+  AND  herkunft EQ '04'.
+
+  SELECT
+           vorglfnr
+           merknr
+           mittelwert
+    INTO TABLE it_qamr
+    FROM qamr
+    WHERE prueflos EQ inspection_lot
+    AND mbewertg EQ 'A'.
+
+  LOOP AT it_qamr INTO wa_qamr.
+
+    SELECT SINGLE
+      verwmerkm
+      pmethode
+      kurztext
+      toleranzun
+      toleranzob
+    INTO wa_qamv
+    FROM qamv
+    WHERE prueflos EQ inspection_lot
+    AND vorglfnr EQ wa_qamr-vorglfnr
+    AND merknr EQ wa_qamr-merknr.
+
+
+    APPEND wa_qamv TO it_qamv.
+    CLEAR: wa_qamv, wa_qamr.
+
+  ENDLOOP.
+
+  SELECT * INTO TABLE it_mic FROM zcoa_mp.
+
+  CLEAR: wa_qamv.
+  LOOP AT it_qamv INTO wa_qamv.
+
+    CLEAR: wa_proj, wa_qamr2.
+
+    wa_proj-test_parameter = wa_qamv-kurztext.
+
+    "----------------------------------------------
+    IF wa_qamv-pmethode IS NOT INITIAL.
+      SELECT SINGLE kurztext INTO wa_qmtt
+        FROM qmtt
+        WHERE pmtnr EQ wa_qamv-pmethode.
+*    wa_qmtt = wa_qamv-pmethode.
+      wa_proj-method = wa_qmtt.
+    ELSE.
+      wa_qmtt = '-'.
+      wa_proj-method = '-'.
+    ENDIF.
+
+    APPEND wa_qmtt TO it_qmtt.
+    CLEAR: wa_qmtt.
+
+    "----------------------------------------------
+
+    READ TABLE it_mic INTO wa_mic WITH KEY mic = wa_qamv-verwmerkm.
+
+    IF sy-subrc IS NOT INITIAL.
+      wa_unit-unit = '-'.
+      wa_proj-unit = '-'.
+    ELSE.
+      wa_unit-unit = wa_mic-unit.
+      wa_proj-unit = wa_mic-unit.
+    ENDIF.
+
+    wa_proj-unit = wa_unit-unit.
+
+    APPEND wa_unit TO it_unit.
+
+    "----------------------------------------
+
+    IF wa_qamv-toleranzun EQ 0 AND wa_qamv-toleranzob EQ 0.
+
+      wa_spe = wa_qamv-sollwert.
+
+      CALL FUNCTION 'QSS0_FLTP_TO_CHAR_CONVERSION'
+        EXPORTING
+          i_number_of_digits   = 2
+          i_fltp_value         = wa_spe
+          i_screen_fieldlength = 16
+        IMPORTING
+          e_char_field         = wa_spe2.
+
+      wa_proj-specification = wa_spe2.
+      CONDENSE wa_proj-specification.
+
+    ELSEIF wa_qamv-toleranzun NE 0 AND wa_qamv-toleranzob EQ 0.
+
+      wa_spe = wa_qamv-toleranzun.
+
+      CALL FUNCTION 'QSS0_FLTP_TO_CHAR_CONVERSION'
+        EXPORTING
+          i_number_of_digits   = 2
+          i_fltp_value         = wa_spe
+          i_screen_fieldlength = 16
+        IMPORTING
+          e_char_field         = wa_spe2.
+
+      CONCATENATE 'min-' wa_spe2 INTO val.
+      wa_proj-specification = val.
+      CONDENSE wa_proj-specification.
+
+
+    ELSEIF wa_qamv-toleranzun EQ 0 AND wa_qamv-toleranzob NE 0.
+
+      wa_spe = wa_qamv-toleranzob.
+
+      CALL FUNCTION 'QSS0_FLTP_TO_CHAR_CONVERSION'
+        EXPORTING
+          i_number_of_digits   = 2
+          i_fltp_value         = wa_spe
+          i_screen_fieldlength = 16
+        IMPORTING
+          e_char_field         = wa_spe2.
+
+      CONCATENATE 'max-' wa_spe2 INTO val.
+      wa_proj-specification = val.
+      CONDENSE wa_proj-specification.
+
+    ELSE.
+
+      CALL FUNCTION 'QSS0_FLTP_TO_CHAR_CONVERSION'
+        EXPORTING
+          i_number_of_digits   = 2
+          i_fltp_value         = wa_qamv-toleranzob
+          i_screen_fieldlength = 16
+        IMPORTING
+          e_char_field         = wa_spe2.
+
+
+      CALL FUNCTION 'QSS0_FLTP_TO_CHAR_CONVERSION'
+        EXPORTING
+          i_number_of_digits   = 2
+          i_fltp_value         = wa_qamv-toleranzun
+          i_screen_fieldlength = 16
+        IMPORTING
+          e_char_field         = wa_spe3.
+
+
+
+      CONCATENATE  wa_spe3 wa_spe2 INTO val SEPARATED BY ' -'.
+
+      wa_proj-specification = val.
+      CONDENSE wa_proj-specification.
+
+    ENDIF.
+
+    IF wa_qamr-mittelwert EQ 0.
+
+      SELECT SINGLE
+        gruppe1
+        katalgart1
+        code1
+        INTO wa_qamr2
+        FROM qamr
+        WHERE mittelwert EQ wa_qamr-mittelwert.
+
+
+      IF wa_qamr2 IS INITIAL.
+        wa_res = '-'.
+        wa_proj-kurztext = wa_res.
+
+
+      ENDIF.
+
+      APPEND wa_proj TO it_proj.
+      APPEND wa_qamr2 TO it_qamr2.
+
+    ENDIF.
+
+    CLEAR: wa_qamv, wa_proj.
+  ENDLOOP.
+
+
+ENDFORM.                    " GET_DATA_2
